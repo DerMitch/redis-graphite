@@ -1,0 +1,6 @@
+# Required
+redis==2.8.0
+statsd==2.0.3
+
+# Optional
+#hiredis==0.1.1
