@@ -7,7 +7,7 @@
     - Generic server stats (INFO command)
     - Length of lists (useful for monitoring queues)
 
-    Requires redis and statsd:
+    Requires redis-py:
     https://pypi.python.org/pypi/redis
 
     Example for a carbon storage schema:
