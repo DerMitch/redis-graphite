@@ -86,6 +86,13 @@ def main():
             continue
 
         while True:
+            if isinstance(args.redis_ports, basestring):
+                args.redis_ports = [ args.redis_ports ]
+            try:
+                iter(args.redis_ports)
+            except TypeError:
+                args.redis_ports = [ args.redis_ports ]
+
             for redis_port in args.redis_ports:
                 base_key = "redis.{}:{}.".format(args.redis_server, redis_port)
                 log.debug("Base key:{}".format(base_key))
