@@ -22,6 +22,7 @@
 import time
 import socket
 import logging
+import sys
 from argparse import ArgumentParser
 
 from redis import Redis
@@ -56,7 +57,7 @@ stats_keys = [
 parser = ArgumentParser()
 # Connections
 parser.add_argument('--redis-server', default="localhost")
-parser.add_argument('--redis-port', type=int, default=6379)
+parser.add_argument('--redis-ports', nargs='+', type=int, default=6379)
 parser.add_argument('--carbon-server', default="localhost")
 parser.add_argument('--carbon-port', type=int, default=2003)
 # Options
@@ -72,45 +73,77 @@ def main():
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
 
-
-    base_key = "redis.{}:{}.".format(args.redis_server, args.redis_port)
-    log.debug("Base key:{}".format(base_key))
-
-    log.debug("Connecting to redis")
-    client = Redis(args.redis_server, args.redis_port)
-
-    sock = socket.socket()
-    sock.connect((args.carbon_server, args.carbon_port))
-    def send(key, value):
-        cmd = "{} {} {}\n".format(key, value, int(time.time()))
-        sock.sendall(cmd)
-
     log.debug("Starting mainloop")
+
     while True:
-        info = client.info()
-        log.debug("Got {} info keys from redis".format(len(info)))
-        if not args.no_server_stats:
-            for key, keytype in stats_keys:
-                if key not in info:
-                    log.debug("WARN:Key not supported by redis: {}".format(key))
+        sock = socket.socket()
+        sock.settimeout(5.0)
+        try:
+            sock.connect((args.carbon_server, args.carbon_port))
+        except:
+            log.debug("Could not connect to graphite on {}:{}".format(args.carbon_server, args.carbon_port))
+            time.sleep(2)
+            continue
+
+        while True:
+            for redis_port in args.redis_ports:
+                base_key = "redis.{}:{}.".format(args.redis_server, redis_port)
+                log.debug("Base key:{}".format(base_key))
+
+                log.debug("Connecting to redis")
+                try:
+                    client = Redis(args.redis_server, redis_port)
+                    info = client.info()
+                    log.debug("Got {} info keys from redis".format(len(info)))
+                except:
+                    log.debug("Could not connect to {}:{}".format(args.redis_server, redis_port))
                     continue
-                value = keytype(info[key])
-                log.debug("gauge {}{} -> {}".format(base_key, key, value))
-                send(base_key + key, value)
 
-        if args.lists:
-            lists_key = base_key + "list."
-            for key in args.lists:
-                length = client.llen(key)
-                log.debug("Length of list {}: {}".format(key, length))
-                send(lists_key + key, length)
+                if not args.no_server_stats:
+                    for key, keytype in stats_keys:
+                        if key not in info:
+                            log.debug("WARN:Key not supported by redis: {}".format(key))
+                            continue
+                        value = keytype(info[key])
+                        log.debug("gauge {}{} -> {}".format(base_key, key, value))
+                        cmd = "{} {} {}\n".format(base_key + key, value, int(time.time()))
+                        try:
+                            sock.sendall(cmd)
+                        except:
+                            log.debug("Could not send metrics...")
+                            break
+                    else:
+                        continue
+                    break
 
-        if args.once:
+                if args.lists:
+                    lists_key = base_key + "list."
+                    for key in args.lists:
+                        length = client.llen(key)
+                        log.debug("Length of list {}: {}".format(key, length))
+                        cmd = "{} {} {}\n".format(base_key + key, length, int(time.time()))
+                        try:
+                            sock.sendall(cmd)
+                        except:
+                            log.debug("Could not send metrics...")
+                            break
+                    else:
+                        continue
+                    break
+
+            else:
+                log.debug("Sleeping {} seconds".format(args.interval))
+                time.sleep(args.interval)
+                continue
             break
-        log.debug("Sleeping {} seconds".format(args.interval))
-        time.sleep(args.interval)
 
-    sock.close()
+            if args.once:
+                sys.exit()
+
+        try:
+            sock.close()
+        except:
+            pass
 
 if __name__ == '__main__':
     main()
