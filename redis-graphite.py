@@ -71,6 +71,7 @@ parser.add_argument('--redis-ports', nargs='+', type=int, default=6379)
 parser.add_argument('--carbon-server', default="localhost")
 parser.add_argument('--carbon-port', type=int, default=2003)
 # Options
+parser.add_argument('--prefix', '-p', help="Prefix of stats, defaults to short hostname", default=None)
 parser.add_argument('--no-server-stats', '-s', help="Disable graphing of server stats", action="store_true")
 parser.add_argument('--lists', '-l', help="Watch the length of one or more lists", nargs="+")
 parser.add_argument('--dbinfo', '-d', help="Collect db size/expires/ttl info", action="store_true")
@@ -117,7 +118,9 @@ def main():
 
         while True:
             for redis_port in args.redis_ports:
-                base_key = "redis.{}:{}.".format(args.redis_server, redis_port)
+                if args.prefix is None:
+                    args.prefix = args.redis_server.split('.')[0]
+                base_key = "redis.{}:{}.".format(args.prefix, redis_port)
                 log.debug("Base key:{}".format(base_key))
 
                 log.debug("Connecting to redis")
