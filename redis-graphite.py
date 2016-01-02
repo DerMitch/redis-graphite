@@ -24,6 +24,7 @@ import time
 import socket
 import logging
 import sys
+import re
 from argparse import ArgumentParser
 
 from redis import Redis
@@ -72,6 +73,7 @@ parser.add_argument('--carbon-port', type=int, default=2003)
 # Options
 parser.add_argument('--no-server-stats', '-s', help="Disable graphing of server stats", action="store_true")
 parser.add_argument('--lists', '-l', help="Watch the length of one or more lists", nargs="+")
+parser.add_argument('--dbinfo', '-d', help="Collect db size/expires/ttl info", action="store_true")
 parser.add_argument('--once', '-o', help="Run only once, then quit", action="store_true")
 parser.add_argument('--interval', '-i', help="Check interval in seconds", type=int, default=10)
 parser.add_argument('--verbose', '-v', help="Debug output", action="store_true")
@@ -142,6 +144,20 @@ def main():
                         length = client.llen(key)
                         if not send_metric(lists_key + key, length, sock):
                             break
+
+                if args.dbinfo:
+                    dbs_key = base_key + 'dbs.'
+                    for key in info:
+                        if re.match(r'db[0-9]+', key):
+                            if not send_metric(dbs_key + key + '.keys', info[key]['keys'], sock):
+                                break
+                            if not send_metric(dbs_key + key + '.expires', info[key]['expires'], sock):
+                                break
+                            if not send_metric(dbs_key + key + '.avg_ttl', info[key]['avg_ttl'], sock):
+                                break
+
+            log.debug("Sleeping {} seconds".format(args.interval))
+            time.sleep(args.interval)
 
             if args.once:
                 sys.exit()
