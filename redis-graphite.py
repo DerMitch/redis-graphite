@@ -44,8 +44,8 @@ stats_keys = [
     ('mem_fragmentation_ratio', lambda x: int(float(x) * 100)),
 
     # Persistence
-    ('rdb_bgsave_in_progress', int), # Nice for graphites render 0 as inf
-    ('aof_rewrite_in_progress', int), # Nice for graphites render 0 as inf
+    ('rdb_bgsave_in_progress', int),  # Nice for graphites render 0 as inf
+    ('aof_rewrite_in_progress', int),  # Nice for graphites render 0 as inf
     ('aof_base_size', int),
     ('aof_current_size', int),
 
@@ -75,6 +75,7 @@ parser.add_argument('--once', '-o', help="Run only once, then quit", action="sto
 parser.add_argument('--interval', '-i', help="Check interval in seconds", type=int, default=10)
 parser.add_argument('--verbose', '-v', help="Debug output", action="store_true")
 
+
 def main():
     args = parser.parse_args()
 
@@ -82,11 +83,11 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
 
     if isinstance(args.redis_ports, basestring):
-        args.redis_ports = [ args.redis_ports ]
+        args.redis_ports = [args.redis_ports]
     try:
         iter(args.redis_ports)
     except TypeError:
-        args.redis_ports = [ args.redis_ports ]
+        args.redis_ports = [args.redis_ports]
 
     log.debug("Starting mainloop")
 
