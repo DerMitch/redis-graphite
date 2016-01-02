@@ -77,6 +77,17 @@ parser.add_argument('--interval', '-i', help="Check interval in seconds", type=i
 parser.add_argument('--verbose', '-v', help="Debug output", action="store_true")
 
 
+def send_metric(key, value, sock):
+    cmd = "{} {} {}\n".format(key, value, int(time.time()))
+    log.debug("Sending {} -> {}".format(key, value))
+    try:
+        sock.sendall(cmd)
+        return True
+    except:
+        log.debug("Could not send metrics...")
+        return False
+
+
 def main():
     args = parser.parse_args()
 
@@ -122,12 +133,7 @@ def main():
                             log.debug("WARN:Key not supported by redis: {}".format(key))
                             continue
                         value = keytype(info[key])
-                        log.debug("gauge {}{} -> {}".format(base_key, key, value))
-                        cmd = "{} {} {}\n".format(base_key + key, value, int(time.time()))
-                        try:
-                            sock.sendall(cmd)
-                        except:
-                            log.debug("Could not send metrics...")
+                        if not send_metric(base_key + key, value, sock):
                             break
                     else:
                         continue
@@ -137,12 +143,7 @@ def main():
                     lists_key = base_key + "list."
                     for key in args.lists:
                         length = client.llen(key)
-                        log.debug("Length of list {}: {}".format(key, length))
-                        cmd = "{} {} {}\n".format(base_key + key, length, int(time.time()))
-                        try:
-                            sock.sendall(cmd)
-                        except:
-                            log.debug("Could not send metrics...")
+                        if not send_metric(lists_key + key, length, sock):
                             break
                     else:
                         continue
