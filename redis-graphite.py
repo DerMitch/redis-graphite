@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
     Redis Graphite Publisher
     ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -23,6 +24,7 @@ import time
 import socket
 import logging
 import sys
+import re
 from argparse import ArgumentParser
 
 from redis import Redis
@@ -44,14 +46,22 @@ stats_keys = [
     ('mem_fragmentation_ratio', lambda x: int(float(x) * 100)),
 
     # Persistence
-    ('rdb_bgsave_in_progress', int), # Nice for graphites render 0 as inf
-    ('aof_rewrite_in_progress', int), # Nice for graphites render 0 as inf
+    ('rdb_bgsave_in_progress', int),  # Nice for graphites render 0 as inf
+    ('aof_rewrite_in_progress', int),  # Nice for graphites render 0 as inf
     ('aof_base_size', int),
     ('aof_current_size', int),
 
     # Stats
     ('total_connections_received', int),
     ('total_commands_processed', int),
+
+    # Keys
+    ('keyspace_hits', int),
+    ('keyspace_misses', int),
+
+    # Pubsub
+    ('pubsub_channels', int),
+    ('pubsub_patterns', int),
 ]
 
 parser = ArgumentParser()
@@ -61,11 +71,25 @@ parser.add_argument('--redis-ports', nargs='+', type=int, default=6379)
 parser.add_argument('--carbon-server', default="localhost")
 parser.add_argument('--carbon-port', type=int, default=2003)
 # Options
+parser.add_argument('--prefix', '-p', help="Prefix of stats, defaults to short hostname", default=None)
 parser.add_argument('--no-server-stats', '-s', help="Disable graphing of server stats", action="store_true")
 parser.add_argument('--lists', '-l', help="Watch the length of one or more lists", nargs="+")
+parser.add_argument('--dbinfo', '-d', help="Collect db size/expires/ttl info", action="store_true")
 parser.add_argument('--once', '-o', help="Run only once, then quit", action="store_true")
 parser.add_argument('--interval', '-i', help="Check interval in seconds", type=int, default=10)
 parser.add_argument('--verbose', '-v', help="Debug output", action="store_true")
+
+
+def send_metric(key, value, sock):
+    cmd = "{} {} {}\n".format(key, value, int(time.time()))
+    log.debug("Sending {} -> {}".format(key, value))
+    try:
+        sock.sendall(cmd)
+        return True
+    except:
+        log.debug("Could not send metrics...")
+        return False
+
 
 def main():
     args = parser.parse_args()
@@ -74,11 +98,11 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
 
     if isinstance(args.redis_ports, basestring):
-        args.redis_ports = [ args.redis_ports ]
+        args.redis_ports = [args.redis_ports]
     try:
         iter(args.redis_ports)
     except TypeError:
-        args.redis_ports = [ args.redis_ports ]
+        args.redis_ports = [args.redis_ports]
 
     log.debug("Starting mainloop")
 
@@ -94,7 +118,9 @@ def main():
 
         while True:
             for redis_port in args.redis_ports:
-                base_key = "redis.{}:{}.".format(args.redis_server, redis_port)
+                if args.prefix is None:
+                    args.prefix = args.redis_server.split('.')[0]
+                base_key = "redis.{}:{}.".format(args.prefix, redis_port)
                 log.debug("Base key:{}".format(base_key))
 
                 log.debug("Connecting to redis")
@@ -112,37 +138,29 @@ def main():
                             log.debug("WARN:Key not supported by redis: {}".format(key))
                             continue
                         value = keytype(info[key])
-                        log.debug("gauge {}{} -> {}".format(base_key, key, value))
-                        cmd = "{} {} {}\n".format(base_key + key, value, int(time.time()))
-                        try:
-                            sock.sendall(cmd)
-                        except:
-                            log.debug("Could not send metrics...")
+                        if not send_metric(base_key + key, value, sock):
                             break
-                    else:
-                        continue
-                    break
 
                 if args.lists:
                     lists_key = base_key + "list."
                     for key in args.lists:
                         length = client.llen(key)
-                        log.debug("Length of list {}: {}".format(key, length))
-                        cmd = "{} {} {}\n".format(base_key + key, length, int(time.time()))
-                        try:
-                            sock.sendall(cmd)
-                        except:
-                            log.debug("Could not send metrics...")
+                        if not send_metric(lists_key + key, length, sock):
                             break
-                    else:
-                        continue
-                    break
 
-            else:
-                log.debug("Sleeping {} seconds".format(args.interval))
-                time.sleep(args.interval)
-                continue
-            break
+                if args.dbinfo:
+                    dbs_key = base_key + 'dbs.'
+                    for key in info:
+                        if re.match(r'db[0-9]+', key):
+                            if not send_metric(dbs_key + key + '.keys', info[key]['keys'], sock):
+                                break
+                            if not send_metric(dbs_key + key + '.expires', info[key]['expires'], sock):
+                                break
+                            if not send_metric(dbs_key + key + '.avg_ttl', info[key]['avg_ttl'], sock):
+                                break
+
+            log.debug("Sleeping {} seconds".format(args.interval))
+            time.sleep(args.interval)
 
             if args.once:
                 sys.exit()
