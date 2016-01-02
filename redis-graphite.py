@@ -135,9 +135,6 @@ def main():
                         value = keytype(info[key])
                         if not send_metric(base_key + key, value, sock):
                             break
-                    else:
-                        continue
-                    break
 
                 if args.lists:
                     lists_key = base_key + "list."
@@ -145,15 +142,6 @@ def main():
                         length = client.llen(key)
                         if not send_metric(lists_key + key, length, sock):
                             break
-                    else:
-                        continue
-                    break
-
-            else:
-                log.debug("Sleeping {} seconds".format(args.interval))
-                time.sleep(args.interval)
-                continue
-            break
 
             if args.once:
                 sys.exit()
