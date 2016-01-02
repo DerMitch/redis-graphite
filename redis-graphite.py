@@ -52,6 +52,14 @@ stats_keys = [
     # Stats
     ('total_connections_received', int),
     ('total_commands_processed', int),
+
+    # Keys
+    ('keyspace_hits', int),
+    ('keyspace_misses', int),
+
+    # Pubsub
+    ('pubsub_channels', int),
+    ('pubsub_patterns', int),
 ]
 
 parser = ArgumentParser()
